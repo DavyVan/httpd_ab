@@ -640,6 +640,40 @@ static void ssl_print_info(struct connection *c)
     SSL_SESSION_print(bio_err, SSL_get_session(c->ssl));
     }
 
+char tohex[] = {
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+    'a', 'b', 'c', 'd', 'e', 'f'
+};
+    
+static void testssl(struct connection *c)
+{
+    static FILE *fout = NULL;
+    if (!fout) {
+        fout = fopen("/tmp/sslkey.log", "a");
+    }
+    if (!fout) return;
+    if (c->ssl->session && c->ssl->session->master_key) {
+        char buf[1000] = {0};
+        int p = 14;
+        memcpy(buf, "CLIENT_RANDOM ", 14);
+        int i;
+        for (i = 0; i < 32; ++i) {
+            buf[p++] = tohex[(c->ssl->s3->client_random[i]>>4)&0xf];
+            buf[p++] = tohex[(c->ssl->s3->client_random[i])&0xf];
+        }
+        buf[p++] = ' ';
+
+        for (i = 0; i < 48; ++i) {
+            buf[p++] = tohex[(c->ssl->session->master_key[i]>>4)&0xf];
+            buf[p++] = tohex[(c->ssl->session->master_key[i])&0xf];
+        }
+        buf[p++] = '\n';
+        fwrite(buf, p, 1, fout);
+        fflush(fout);
+        //puts(buf);
+    }
+}
+
 static void ssl_proceed_handshake(struct connection *c)
 {
     int do_next = 1;
@@ -649,6 +683,11 @@ static void ssl_proceed_handshake(struct connection *c)
 
         ret = SSL_do_handshake(c->ssl);
         ecode = SSL_get_error(c->ssl, ret);
+        
+        if (ecode == 2 && c->ssl->session) {
+            //printf("Test SSL! ecode=%d\n", ecode);
+            testssl(c);
+        }
 
         switch (ecode) {
         case SSL_ERROR_NONE:
